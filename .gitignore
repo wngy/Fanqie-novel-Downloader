@@ -40,6 +40,7 @@ Thumbs.db
 
 # 下载的小说文件
 *.txt
+!requirements.txt
 *.epub
 下载的小说/
 novels/
