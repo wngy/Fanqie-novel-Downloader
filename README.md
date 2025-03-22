@@ -12,7 +12,7 @@
 
 ### 直接使用预编译版本
 
-可以在[Releases](https://github.com/your-username/Tomato-Novel-Downloader-Lite/releases)页面下载最新的预编译版本。
+可以在[Releases](https://github.com/POf-L/Fanqie-Tomato-Downloader/releases)页面下载最新的预编译版本。
 
 - Windows用户：下载并解压`番茄小说下载器-Windows.zip`，直接运行`番茄小说下载器.exe`。
 - MacOS用户：下载并解压`番茄小说下载器-MacOS.zip`，直接运行`番茄小说下载器`应用。
@@ -22,7 +22,7 @@
 
 1. 克隆仓库：
 ```bash
-git clone https://github.com/your-username/Tomato-Novel-Downloader-Lite.git
+git clone https://github.com/POf-L/Fanqie-Tomato-Downloader.git
 cd Tomato-Novel-Downloader-Lite
 ```
 
