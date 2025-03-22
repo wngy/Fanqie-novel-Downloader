@@ -124,6 +124,7 @@ class NovelDownloaderGUI(tk.Tk):
         format_frame.grid(row=3, column=1, sticky=tk.W, padx=5, pady=5)
         ttk.Radiobutton(format_frame, text="TXT", value="txt", variable=self.format_var).pack(side=tk.LEFT, padx=10)
         ttk.Radiobutton(format_frame, text="EPUB", value="epub", variable=self.format_var).pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(format_frame, text="分章节TXT", value="chapter", variable=self.format_var).pack(side=tk.LEFT, padx=10)
         
         # 下载按钮
         self.download_button = ttk.Button(input_frame, text="开始下载", command=self.start_download)
@@ -178,6 +179,24 @@ class NovelDownloaderGUI(tk.Tk):
         if not save_path:
             messagebox.showerror("错误", "请选择保存路径")
             return
+
+        # 检查EPUB格式所需的库
+        output_format = self.format_var.get()
+        if output_format == "epub":
+            try:
+                import ebooklib
+            except ImportError:
+                response = messagebox.askyesno("缺少依赖", "转换为EPUB格式需要安装'ebooklib'库。是否现在安装？")
+                if response:
+                    self.install_ebooklib()
+                    # 安装后尝试再次导入
+                    try:
+                        import ebooklib
+                    except ImportError:
+                        messagebox.showerror("错误", "安装ebooklib失败，请尝试手动安装：pip install ebooklib")
+                        return
+                else:
+                    return
             
         # 确保保存路径存在
         try:
@@ -235,6 +254,27 @@ class NovelDownloaderGUI(tk.Tk):
         # 恢复标准输出
         sys.stdout = sys.__stdout__
         messagebox.showinfo("下载状态", message)
+    
+    def install_ebooklib(self):
+        """安装ebooklib库"""
+        try:
+            self.log_text.config(state=tk.NORMAL)
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.insert(tk.END, "正在安装ebooklib库...\n")
+            self.log_text.config(state=tk.DISABLED)
+            
+            import subprocess
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "ebooklib"],
+                                  capture_output=True, text=True)
+            
+            self.log_text.config(state=tk.NORMAL)
+            if result.returncode == 0:
+                self.log_text.insert(tk.END, "安装成功！\n")
+            else:
+                self.log_text.insert(tk.END, f"安装失败: {result.stderr}\n")
+            self.log_text.config(state=tk.DISABLED)
+        except Exception as e:
+            messagebox.showerror("安装错误", f"安装ebooklib库时出错: {str(e)}")
         
     def on_closing(self):
         if self.is_downloading:
