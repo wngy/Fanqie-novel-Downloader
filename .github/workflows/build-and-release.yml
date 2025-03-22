@@ -4,6 +4,16 @@ on:
   release:
     types: [created]
   workflow_dispatch:  # 允许手动触发工作流
+    inputs:
+      version:
+        description: '版本号 (例如: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      prerelease:
+        description: '是否为预发布版本'
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build-windows:
@@ -54,7 +64,7 @@ jobs:
           name: windows-build
           path: 番茄小说下载器-Windows.zip
           
-      - name: 上传至Release
+      - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
@@ -109,7 +119,7 @@ jobs:
           name: macos-build
           path: 番茄小说下载器-MacOS.zip
           
-      - name: 上传至Release
+      - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
@@ -164,8 +174,53 @@ jobs:
           name: linux-build
           path: 番茄小说下载器-Linux.zip
           
-      - name: 上传至Release
+      - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
           files: 番茄小说下载器-Linux.zip
+
+  # 创建发布版本
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: 下载Windows构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          
+      - name: 下载MacOS构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+          
+      - name: 下载Linux构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-build
+          
+      - name: 创建Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: 番茄小说下载器 ${{ github.event.inputs.version }}
+          body: |
+            番茄小说下载器 ${{ github.event.inputs.version }} 发布
+            
+            ### 功能
+            - 下载番茄小说并导出为TXT或EPUB格式
+            - 支持多线程下载加速
+            - 自动修复ebooklib.epub模块导入问题
+            
+            ### 下载
+            - Windows: 番茄小说下载器-Windows.zip
+            - macOS: 番茄小说下载器-MacOS.zip
+            - Linux: 番茄小说下载器-Linux.zip
+          files: |
+            番茄小说下载器-Windows.zip
+            番茄小说下载器-MacOS.zip
+            番茄小说下载器-Linux.zip
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease }}
