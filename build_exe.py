@@ -23,6 +23,13 @@ args = [
     '--hidden-import=ebooklib',
     '--hidden-import=ebooklib.epub',  # 明确导入epub子模块
     '--hidden-import=tqdm',
+    '--hidden-import=json',
+    '--hidden-import=threading',
+    '--hidden-import=tkinter',
+    '--hidden-import=tkinter.ttk',
+    '--hidden-import=tkinter.filedialog',
+    '--hidden-import=tkinter.messagebox',
+    '--uac-admin',  # 请求管理员权限以确保文件写入权限
 ]
 
 # 运行PyInstaller

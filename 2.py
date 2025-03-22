@@ -36,9 +36,13 @@ def get_cookie():
         try:
             response = requests.get('https://fanqienovel.com', headers=headers, timeout=10)
             if response.status_code == 200 and len(response.text) > 200:
-                with open(cookie_path, 'w', encoding='utf-8') as f:
-                    json.dump(cookie, f)
-                print(f"cookie已生成: {cookie}")
+                try:
+                    # 在打包环境下可能无法写入cookie文件，这里做异常处理
+                    with open(cookie_path, 'w', encoding='utf-8') as f:
+                        json.dump(cookie, f)
+                    print(f"cookie已生成: {cookie}")
+                except Exception as e:
+                    print(f"cookie写入失败，但不影响使用: {str(e)}")
                 return cookie
         except Exception as e:
             print(f"请求失败: {e}")
@@ -177,25 +181,35 @@ def download_chapter(div, headers, save_path, book_name, titles, i, total, outpu
     content = funLog(response, headers)
 
     if content:
-        if output_format == "txt":
-            # 所有章节保存在一个文件中
-            output_file_path = os.path.join(save_path, f"{book_name}.txt")
-            with open(output_file_path, 'a', encoding='utf-8') as f:
-                f.write(f'{titles[i]}\n')
-                f.write(content + '\n\n')
-        elif output_format == "chapter":
-            # 每个章节保存为独立文件
-            chapter_dir = os.path.join(save_path, book_name)
-            os.makedirs(chapter_dir, exist_ok=True)
-            # 替换文件名中的非法字符
-            safe_title = re.sub(r'[\\/*?:"<>|]', "", titles[i])
-            chapter_file = os.path.join(chapter_dir, f"{i+1:04d}_{safe_title}.txt")
-            with open(chapter_file, 'w', encoding='utf-8') as f:
-                f.write(f'{titles[i]}\n\n')
-                f.write(content)
-        
-        print(f'已下载 {i + 1}/{total}')
-        return True
+        try:
+            if output_format == "txt":
+                # 所有章节保存在一个文件中
+                output_file_path = os.path.join(save_path, f"{book_name}.txt")
+                # 确保文件路径有效
+                os.makedirs(os.path.dirname(os.path.abspath(output_file_path)), exist_ok=True)
+                with open(output_file_path, 'a', encoding='utf-8') as f:
+                    if f is None:  # 额外检查文件对象
+                        raise IOError(f"无法打开文件: {output_file_path}")
+                    f.write(f'{titles[i]}\n')
+                    f.write(content + '\n\n')
+            elif output_format == "chapter":
+                # 每个章节保存为独立文件
+                chapter_dir = os.path.join(save_path, book_name)
+                os.makedirs(chapter_dir, exist_ok=True)
+                # 替换文件名中的非法字符
+                safe_title = re.sub(r'[\\/*?:"<>|]', "", titles[i])
+                chapter_file = os.path.join(chapter_dir, f"{i+1:04d}_{safe_title}.txt")
+                with open(chapter_file, 'w', encoding='utf-8') as f:
+                    if f is None:  # 额外检查文件对象
+                        raise IOError(f"无法打开文件: {chapter_file}")
+                    f.write(f'{titles[i]}\n\n')
+                    f.write(content)
+            
+            print(f'已下载 {i + 1}/{total}')
+            return True
+        except Exception as e:
+            print(f"写入文件时出错: {str(e)}")
+            return False
     else:
         print(f"第 {i + 1} 章下载失败")
         return False
@@ -225,22 +239,33 @@ def Run(book_id, save_path, output_format=None):
     total = len(li_list)
     titles = extract_chatper_titles(soup)
 
-    os.makedirs(save_path, exist_ok=True)
+    # 确保保存路径存在
+    try:
+        save_path = os.path.abspath(save_path)
+        os.makedirs(save_path, exist_ok=True)
+        print(f"保存路径: {save_path}")
+    except Exception as e:
+        print(f"创建保存目录失败: {str(e)}")
+        return
 
-    # 如果是TXT格式，创建并写入小说信息
-    if OUTPUT_FORMAT == "txt":
-        output_file_path = os.path.join(save_path, f"{name}.txt")
-        with open(output_file_path, 'w', encoding='utf-8') as f:
-            # 写入书籍信息
-            f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n')
-    elif OUTPUT_FORMAT == "chapter":
-        # 为分章节创建目录
-        chapter_dir = os.path.join(save_path, name)
-        os.makedirs(chapter_dir, exist_ok=True)
-        # 创建书籍信息文件
-        info_file = os.path.join(chapter_dir, "书籍信息.txt")
-        with open(info_file, 'w', encoding='utf-8') as f:
-            f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n')
+    try:
+        # 如果是TXT格式，创建并写入小说信息
+        if OUTPUT_FORMAT == "txt":
+            output_file_path = os.path.join(save_path, f"{name}.txt")
+            with open(output_file_path, 'w', encoding='utf-8') as f:
+                # 写入书籍信息
+                f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n')
+        elif OUTPUT_FORMAT == "chapter":
+            # 为分章节创建目录
+            chapter_dir = os.path.join(save_path, name)
+            os.makedirs(chapter_dir, exist_ok=True)
+            # 创建书籍信息文件
+            info_file = os.path.join(chapter_dir, "书籍信息.txt")
+            with open(info_file, 'w', encoding='utf-8') as f:
+                f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n')
+    except Exception as e:
+        print(f"创建初始文件失败: {str(e)}")
+        return
 
     # 使用多线程下载章节
     print(f"使用 {MAX_WORKERS} 个线程下载")
@@ -294,28 +319,32 @@ def Run(book_id, save_path, output_format=None):
             chapter_title = ""
             chapter_index = 0
             
-            with open(txt_path, 'r', encoding='utf-8') as f:
-                # 跳过书籍信息
-                for _ in range(4):
-                    f.readline()
-                
-                for line in f:
-                    line = line.strip()
-                    if line and line in titles:
-                        # 保存上一章节
-                        if chapter_title and chapter_content:
-                            c = epub.EpubHtml(title=chapter_title, file_name=f'chapter_{chapter_index}.xhtml')
-                            c.content = f"<h1>{chapter_title}</h1>{chapter_content.replace(chr(10), '<br/>')}"
-                            book.add_item(c)
-                            chapters.append(c)
-                        
-                        # 新章节
-                        chapter_title = line
-                        chapter_content = ""
-                        chapter_index += 1
-                    else:
-                        if chapter_title:  # 确保我们已经有了章节标题
-                            chapter_content += line + "\n"
+            try:
+                with open(txt_path, 'r', encoding='utf-8') as f:
+                    # 跳过书籍信息
+                    for _ in range(4):
+                        f.readline()
+                    
+                    for line in f:
+                        line = line.strip()
+                        if line and line in titles:
+                            # 保存上一章节
+                            if chapter_title and chapter_content:
+                                c = epub.EpubHtml(title=chapter_title, file_name=f'chapter_{chapter_index}.xhtml')
+                                c.content = f"<h1>{chapter_title}</h1>{chapter_content.replace(chr(10), '<br/>')}"
+                                book.add_item(c)
+                                chapters.append(c)
+                            
+                            # 新章节
+                            chapter_title = line
+                            chapter_content = ""
+                            chapter_index += 1
+                        else:
+                            if chapter_title:  # 确保我们已经有了章节标题
+                                chapter_content += line + "\n"
+            except Exception as e:
+                print(f"读取TXT文件失败: {str(e)}")
+                return
             
             # 添加最后一章
             if chapter_title and chapter_content:
@@ -334,10 +363,12 @@ def Run(book_id, save_path, output_format=None):
             book.spine = spine
             
             # 写入EPUB文件
-            epub_path = os.path.join(save_path, f"{name}.epub")
-            epub.write_epub(epub_path, book, {})
-            
-            print(f"EPUB格式已创建: {epub_path}")
+            try:
+                epub_path = os.path.join(save_path, f"{name}.epub")
+                epub.write_epub(epub_path, book, {})
+                print(f"EPUB格式已创建: {epub_path}")
+            except Exception as e:
+                print(f"写入EPUB文件失败: {str(e)}")
         except ImportError:
             print("EPUB转换失败: 缺少ebooklib库。您可以使用 'pip install ebooklib' 安装后重试。")
         except Exception as e:

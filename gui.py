@@ -98,7 +98,7 @@ class NovelDownloaderGUI(tk.Tk):
             self.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # 添加版本信息
-            self.version = "1.1.1"
+            self.version = "1.1.2"
             
             # 状态变量
             self.is_downloading = False
