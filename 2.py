@@ -200,9 +200,14 @@ def download_chapter(div, headers, save_path, book_name, titles, i, total, outpu
         print(f"第 {i + 1} 章下载失败")
         return False
 
-def Run(book_id, save_path):
+def Run(book_id, save_path, output_format=None):
     """运行下载"""
     global MAX_WORKERS, OUTPUT_FORMAT
+    
+    # 如果提供了output_format参数，更新全局OUTPUT_FORMAT
+    if output_format:
+        OUTPUT_FORMAT = output_format
+        
     headers = get_headers()
     
     # 获取书籍信息

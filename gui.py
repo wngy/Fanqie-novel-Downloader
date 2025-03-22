@@ -587,7 +587,7 @@ class NovelDownloaderGUI(tk.Tk):
                 raise Exception(f"创建保存目录失败: {str(e)}")
             
             try:
-                novel_downloader.Run(book_id, save_path)
+                novel_downloader.Run(book_id, save_path, output_format)
                 self.after(100, self.download_complete, "下载完成！")
             except AttributeError as e:
                 if "'NoneType' object has no attribute" in str(e):
