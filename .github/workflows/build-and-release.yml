@@ -50,20 +50,16 @@ jobs:
           Compress-Archive -Path dist/番茄小说下载器.exe -DestinationPath 番茄小说下载器-Windows.zip
           
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-build
           path: 番茄小说下载器-Windows.zip
           
       - name: 上传至Release
         if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
+        uses: softprops/action-gh-release@v1
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: 番茄小说下载器-Windows.zip
-          asset_name: 番茄小说下载器-Windows.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: 番茄小说下载器-Windows.zip
 
   # 为MacOS构建
   build-macos:
@@ -110,20 +106,16 @@ jobs:
           cd dist && zip -r ../番茄小说下载器-MacOS.zip 番茄小说下载器
           
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-build
           path: 番茄小说下载器-MacOS.zip
           
       - name: 上传至Release
         if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
+        uses: softprops/action-gh-release@v1
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: 番茄小说下载器-MacOS.zip
-          asset_name: 番茄小说下载器-MacOS.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: 番茄小说下载器-MacOS.zip
 
   # 为Linux构建
   build-linux:
@@ -170,17 +162,13 @@ jobs:
           cd dist && zip -r ../番茄小说下载器-Linux.zip 番茄小说下载器
           
       - name: 上传构建产物
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-build
           path: 番茄小说下载器-Linux.zip
           
       - name: 上传至Release
         if: github.event_name == 'release'
-        uses: svenstaro/upload-release-action@v2
+        uses: softprops/action-gh-release@v1
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: 番茄小说下载器-Linux.zip
-          asset_name: 番茄小说下载器-Linux.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          files: 番茄小说下载器-Linux.zip
