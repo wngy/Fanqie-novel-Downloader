@@ -56,19 +56,19 @@ jobs:
           
       - name: 压缩Windows可执行文件
         run: |
-          Compress-Archive -Path dist/番茄小说下载器.exe -DestinationPath 番茄小说下载器-Windows.zip
+          Compress-Archive -Path dist/番茄小说下载器.exe -DestinationPath Fanqie-Novel-Downloader-Windows.zip
           
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: 番茄小说下载器-Windows.zip
+          path: Fanqie-Novel-Downloader-Windows.zip
           
       - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: 番茄小说下载器-Windows.zip
+          files: Fanqie-Novel-Downloader-Windows.zip
 
   # 为MacOS构建
   build-macos:
@@ -111,19 +111,19 @@ jobs:
           
       - name: 压缩MacOS可执行文件
         run: |
-          cd dist && zip -r ../番茄小说下载器-MacOS.zip 番茄小说下载器
+          cd dist && zip -r ../Fanqie-Novel-Downloader-MacOS.zip 番茄小说下载器
           
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
-          path: 番茄小说下载器-MacOS.zip
+          path: Fanqie-Novel-Downloader-MacOS.zip
           
       - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: 番茄小说下载器-MacOS.zip
+          files: Fanqie-Novel-Downloader-MacOS.zip
 
   # 为Linux构建
   build-linux:
@@ -166,19 +166,19 @@ jobs:
           
       - name: 压缩Linux可执行文件
         run: |
-          cd dist && zip -r ../番茄小说下载器-Linux.zip 番茄小说下载器
+          cd dist && zip -r ../Fanqie-Novel-Downloader-Linux.zip 番茄小说下载器
           
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: linux-build
-          path: 番茄小说下载器-Linux.zip
+          path: Fanqie-Novel-Downloader-Linux.zip
           
       - name: 上传至已存在的Release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v1
         with:
-          files: 番茄小说下载器-Linux.zip
+          files: Fanqie-Novel-Downloader-Linux.zip
 
   # 创建发布版本
   create-release:
@@ -205,22 +205,22 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.event.inputs.version }}
-          name: 番茄小说下载器 ${{ github.event.inputs.version }}
+          name: Fanqie Novel Downloader ${{ github.event.inputs.version }}
           body: |
-            番茄小说下载器 ${{ github.event.inputs.version }} 发布
+            Fanqie Novel Downloader ${{ github.event.inputs.version }} Release
             
-            ### 功能
-            - 下载番茄小说并导出为TXT或EPUB格式
-            - 支持多线程下载加速
-            - 自动修复ebooklib.epub模块导入问题
+            ### Features
+            - Download novels from Fanqie and export as TXT or EPUB format
+            - Support multi-threaded downloading for acceleration
+            - Automatically fix ebooklib.epub module import issues
             
-            ### 下载
-            - Windows: 番茄小说下载器-Windows.zip
-            - macOS: 番茄小说下载器-MacOS.zip
-            - Linux: 番茄小说下载器-Linux.zip
+            ### Downloads
+            - Windows: Fanqie-Novel-Downloader-Windows.zip
+            - macOS: Fanqie-Novel-Downloader-MacOS.zip
+            - Linux: Fanqie-Novel-Downloader-Linux.zip
           files: |
-            番茄小说下载器-Windows.zip
-            番茄小说下载器-MacOS.zip
-            番茄小说下载器-Linux.zip
+            Fanqie-Novel-Downloader-Windows.zip
+            Fanqie-Novel-Downloader-MacOS.zip
+            Fanqie-Novel-Downloader-Linux.zip
           draft: false
           prerelease: ${{ github.event.inputs.prerelease }}
