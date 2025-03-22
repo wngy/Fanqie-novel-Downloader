@@ -5,10 +5,27 @@
 ## 功能
 
 - 支持番茄小说内容下载
-- 将小说转换为适合阅读的格式
+- 将小说转换为适合阅读的TXT或EPUB格式
 - 简洁易用的图形界面
+- 支持多线程下载加速
+- 提供在线下载功能，无需本地环境
 
 ## 使用方法
+
+### 在线下载小说（无需安装任何软件）
+
+您可以直接通过GitHub的在线功能下载小说，无需在本地安装任何软件：
+
+1. 在GitHub仓库页面，点击"Actions"选项卡
+2. 在左侧选择"在线下载小说"工作流
+3. 点击"Run workflow"按钮
+4. 填写以下信息：
+   - 小说ID（从番茄小说网址中获取，例如：https://fanqienovel.com/page/7105916563 中的7105916563）
+   - 下载线程数（默认为5，可选1-10）
+   - 输出格式（选择txt或epub）
+5. 点击"Run workflow"开始下载
+6. 下载完成后，点击运行记录中的"Summary"标签
+7. 在"Artifacts"部分找到并下载小说文件（文件保存期限为7天）
 
 ### 直接使用预编译版本
 
@@ -28,7 +45,7 @@ cd Tomato-Novel-Downloader-Lite
 
 2. 安装依赖：
 ```bash
-pip install requests bs4 lxml ebooklib tqdm
+pip install -r requirements.txt
 ```
 
 3. 运行程序：
@@ -47,22 +64,28 @@ python gui.py
 1. 在Windows、MacOS和Linux上构建可执行文件
 2. 将构建好的可执行文件打包为zip文件
 3. 上传构建产物到GitHub Artifacts
-4. 如果是从Release触发的，则自动将构建产物上传到Release页面
+4. 创建Release发布页面（如果是从手动触发的工作流）
 
-### 手动触发构建
+### 手动触发构建并发布
 
 1. 在GitHub仓库页面，点击"Actions"选项卡
 2. 在左侧选择"构建与发布"工作流
 3. 点击"Run workflow"按钮
-4. 选择要运行的分支，然后点击"Run workflow"
+4. 填写版本号（如v1.0.0）和是否为预发布版本
+5. 点击"Run workflow"开始构建
+6. 构建完成后会自动创建Release并上传构建文件
 
-### 创建Release并自动发布
+## 常见问题
 
-1. 在GitHub仓库页面，点击"Releases"
-2. 点击"Draft a new release"
-3. 填写标签(tag)和标题
-4. 点击"Publish release"
-5. GitHub Actions将自动构建并将构建产物上传到此Release
+### 如何查找小说ID？
+
+在番茄小说网站上，打开您想要下载的小说页面，URL中的数字部分就是小说ID。
+例如：`https://fanqienovel.com/page/7105916563` 中的 `7105916563` 就是小说ID。
+
+### 下载的文件在哪里？
+
+- 使用GUI应用时，下载的文件保存在您指定的保存路径中
+- 使用在线下载功能时，文件将作为GitHub Artifacts提供下载，保存期限为7天
 
 ## 许可证
 

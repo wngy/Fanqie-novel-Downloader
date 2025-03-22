@@ -19,6 +19,11 @@ on:
           - epub
         default: 'txt'
 
+# 添加必要的权限
+permissions:
+  contents: read  # 允许读取仓库内容
+  actions: write  # 允许上传构建产物
+
 jobs:
   download-novel:
     runs-on: ubuntu-latest
