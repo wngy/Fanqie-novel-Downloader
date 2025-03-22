@@ -21,8 +21,7 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install requests bs4 lxml ebooklib tqdm
+          pip install -r requirements.txt
           
       - name: 确保cookie.json存在
         run: |
@@ -77,8 +76,7 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install requests bs4 lxml ebooklib tqdm
+          pip install -r requirements.txt
           
       - name: 确保cookie.json存在
         run: |
@@ -133,8 +131,7 @@ jobs:
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller
-          pip install requests bs4 lxml ebooklib tqdm
+          pip install -r requirements.txt
           
       - name: 确保cookie.json存在
         run: |
