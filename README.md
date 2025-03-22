@@ -31,9 +31,9 @@
 
 可以在[Releases](https://github.com/POf-L/Fanqie-Tomato-Downloader/releases)页面下载最新的预编译版本。
 
-- Windows用户：下载并解压`番茄小说下载器-Windows.zip`，直接运行`番茄小说下载器.exe`。
-- MacOS用户：下载并解压`番茄小说下载器-MacOS.zip`，直接运行`番茄小说下载器`应用。
-- Linux用户：下载并解压`番茄小说下载器-Linux.zip`，直接运行`番茄小说下载器`可执行文件。
+- Windows用户：下载并解压`Fanqie-Novel-Downloader-Windows.zip`，直接运行`番茄小说下载器.exe`。
+- MacOS用户：下载并解压`Fanqie-Novel-Downloader-MacOS.zip`，直接运行`番茄小说下载器`应用。
+- Linux用户：下载并解压`Fanqie-Novel-Downloader-Linux.zip`，直接运行`番茄小说下载器`可执行文件。
 
 ### 从源码运行
 

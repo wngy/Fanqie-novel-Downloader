@@ -11,6 +11,8 @@ from tqdm import tqdm
 
 # 全局变量
 cookie_path = "cookie.json"
+MAX_WORKERS = 5  # 默认线程数
+OUTPUT_FORMAT = "txt"  # 默认输出格式：txt（单文件）或chapter（每章一个文件）
 
 # 获取随机User-Agent
 def get_random_user_agent():
@@ -164,7 +166,7 @@ def get_book_info(book_id, headers):
     
     return name, author_name, description
 
-def download_chapter(div, headers, save_path, book_name, titles, i, total):
+def download_chapter(div, headers, save_path, book_name, titles, i, total, output_format="txt"):
     """下载单个章节"""
     if not div.a:
         print(f"第 {i + 1} 章没有链接，跳过")
@@ -175,16 +177,32 @@ def download_chapter(div, headers, save_path, book_name, titles, i, total):
     content = funLog(response, headers)
 
     if content:
-        output_file_path = os.path.join(save_path, f"{book_name}.txt")
-        with open(output_file_path, 'a', encoding='utf-8') as f:
-            f.write(f'{titles[i]}\n')
-            f.write(content + '\n\n')
+        if output_format == "txt":
+            # 所有章节保存在一个文件中
+            output_file_path = os.path.join(save_path, f"{book_name}.txt")
+            with open(output_file_path, 'a', encoding='utf-8') as f:
+                f.write(f'{titles[i]}\n')
+                f.write(content + '\n\n')
+        elif output_format == "chapter":
+            # 每个章节保存为独立文件
+            chapter_dir = os.path.join(save_path, book_name)
+            os.makedirs(chapter_dir, exist_ok=True)
+            # 替换文件名中的非法字符
+            safe_title = re.sub(r'[\\/*?:"<>|]', "", titles[i])
+            chapter_file = os.path.join(chapter_dir, f"{i+1:04d}_{safe_title}.txt")
+            with open(chapter_file, 'w', encoding='utf-8') as f:
+                f.write(f'{titles[i]}\n\n')
+                f.write(content)
+        
         print(f'已下载 {i + 1}/{total}')
+        return True
     else:
         print(f"第 {i + 1} 章下载失败")
+        return False
 
 def Run(book_id, save_path):
     """运行下载"""
+    global MAX_WORKERS, OUTPUT_FORMAT
     headers = get_headers()
     
     # 获取书籍信息
@@ -204,24 +222,128 @@ def Run(book_id, save_path):
 
     os.makedirs(save_path, exist_ok=True)
 
-    # 创建并写入小说信息
-    output_file_path = os.path.join(save_path, f"{name}.txt")
-    with open(output_file_path, 'w', encoding='utf-8') as f:
-        # 写入书籍信息
-        f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n')
+    # 如果是TXT格式，创建并写入小说信息
+    if OUTPUT_FORMAT == "txt":
+        output_file_path = os.path.join(save_path, f"{name}.txt")
+        with open(output_file_path, 'w', encoding='utf-8') as f:
+            # 写入书籍信息
+            f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n\n')
+    elif OUTPUT_FORMAT == "chapter":
+        # 为分章节创建目录
+        chapter_dir = os.path.join(save_path, name)
+        os.makedirs(chapter_dir, exist_ok=True)
+        # 创建书籍信息文件
+        info_file = os.path.join(chapter_dir, "书籍信息.txt")
+        with open(info_file, 'w', encoding='utf-8') as f:
+            f.write(f'小说名: {name}\n作者: {author_name}\n内容简介: {description}\n')
 
     # 使用多线程下载章节
-    with ThreadPoolExecutor(max_workers=5) as executor:  # 最大线程数
+    print(f"使用 {MAX_WORKERS} 个线程下载")
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         futures = []
         for i, div in enumerate(li_list):
-            headers = get_headers()  
-            futures.append(executor.submit(download_chapter, div, headers, save_path, name, titles, i, total))
+            headers = get_headers()
+            futures.append(executor.submit(download_chapter, div, headers, save_path, name, titles, i, total, OUTPUT_FORMAT))
         
         # 使用进度条
         for _ in tqdm(as_completed(futures), total=total, desc="下载进度"):
-            pass  
+            pass
 
-    print(f"小说已下载到: {output_file_path}")
+    # 如果是EPUB格式，转换TXT到EPUB
+    if OUTPUT_FORMAT == "epub":
+        try:
+            from ebooklib import epub
+            print("正在将TXT转换为EPUB...")
+            
+            # 创建EPUB书籍
+            book = epub.EpubBook()
+            book.set_identifier(f'fanqie_{book_id}')
+            book.set_title(name)
+            book.set_language('zh-CN')
+            book.add_author(author_name)
+            
+            # 添加CSS样式
+            style = '''
+            @namespace epub "http://www.idpf.org/2007/ops";
+            body {
+                font-family: SimSun, serif;
+                line-height: 1.5;
+            }
+            h1 {
+                text-align: center;
+                margin-bottom: 1em;
+            }
+            '''
+            nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
+            book.add_item(nav_css)
+            
+            # 添加简介章节
+            intro = epub.EpubHtml(title="简介", file_name="intro.xhtml", lang="zh-CN")
+            intro.content = f"<h1>简介</h1><p>{description}</p>"
+            book.add_item(intro)
+            
+            # 读取所有章节
+            chapters = []
+            txt_path = os.path.join(save_path, f"{name}.txt")
+            chapter_content = ""
+            chapter_title = ""
+            chapter_index = 0
+            
+            with open(txt_path, 'r', encoding='utf-8') as f:
+                # 跳过书籍信息
+                for _ in range(4):
+                    f.readline()
+                
+                for line in f:
+                    line = line.strip()
+                    if line and line in titles:
+                        # 保存上一章节
+                        if chapter_title and chapter_content:
+                            c = epub.EpubHtml(title=chapter_title, file_name=f'chapter_{chapter_index}.xhtml')
+                            c.content = f"<h1>{chapter_title}</h1>{chapter_content.replace(chr(10), '<br/>')}"
+                            book.add_item(c)
+                            chapters.append(c)
+                        
+                        # 新章节
+                        chapter_title = line
+                        chapter_content = ""
+                        chapter_index += 1
+                    else:
+                        if chapter_title:  # 确保我们已经有了章节标题
+                            chapter_content += line + "\n"
+            
+            # 添加最后一章
+            if chapter_title and chapter_content:
+                c = epub.EpubHtml(title=chapter_title, file_name=f'chapter_{chapter_index}.xhtml')
+                c.content = f"<h1>{chapter_title}</h1>{chapter_content.replace(chr(10), '<br/>')}"
+                book.add_item(c)
+                chapters.append(c)
+            
+            # 添加导航
+            book.toc = [intro] + chapters
+            book.add_item(epub.EpubNcx())
+            book.add_item(epub.EpubNav())
+            
+            # 定义书籍脊柱
+            spine = [intro, 'nav'] + chapters
+            book.spine = spine
+            
+            # 写入EPUB文件
+            epub_path = os.path.join(save_path, f"{name}.epub")
+            epub.write_epub(epub_path, book, {})
+            
+            print(f"EPUB格式已创建: {epub_path}")
+        except ImportError:
+            print("EPUB转换失败: 缺少ebooklib库。您可以使用 'pip install ebooklib' 安装后重试。")
+        except Exception as e:
+            print(f"EPUB转换过程中出错: {str(e)}")
+
+    if OUTPUT_FORMAT == "txt":
+        print(f"小说已下载到: {os.path.join(save_path, f'{name}.txt')}")
+    elif OUTPUT_FORMAT == "chapter":
+        print(f"小说已下载到: {os.path.join(save_path, name)}")
+    elif OUTPUT_FORMAT == "epub":
+        print(f"小说已下载到: {os.path.join(save_path, f'{name}.epub')}")
     
 def main():
     book_id = input("欢迎使用番茄小说下载器精简版！\n作者：Dlmos（Dlmily）\n基于DlmOS驱动\nGithub：https://github.com/Dlmily/Tomato-Novel-Downloader-Lite\n参考代码：https://github.com/ying-ck/fanqienovel-downloader/blob/main/src/ref_main.py\n赞助/了解新产品：https://afdian.com/a/dlbaokanluntanos\n\n请输入小说 ID：")

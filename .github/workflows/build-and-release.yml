@@ -74,6 +74,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: Fanqie-Novel-Downloader-Windows.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # 为MacOS构建
   build-macos:
@@ -129,6 +130,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: Fanqie-Novel-Downloader-MacOS.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # 为Linux构建
   build-linux:
@@ -184,6 +186,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: Fanqie-Novel-Downloader-Linux.zip
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   # 创建发布版本
   create-release:
@@ -209,6 +212,7 @@ jobs:
       - name: 创建Release
         uses: softprops/action-gh-release@v1
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ github.event.inputs.version }}
           name: Fanqie Novel Downloader ${{ github.event.inputs.version }}
           body: |
