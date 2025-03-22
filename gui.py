@@ -435,7 +435,7 @@ class NovelDownloaderGUI(tk.Tk):
         version_label.pack(side=tk.LEFT)
         
         info_label = ttk.Label(footer_frame,
-                              text="作者: Dlmos (Dlmily) | 基于DlmOS驱动 | GitHub: github.com/Dlmily/Tomato-Novel-Downloader-Lite",
+                              text="作者: POf-L | 基于DlmOS驱动 | GitHub: github.com/POf-L/Fanqie-Tomato-Downloader",
                               font=("Arial", 8), foreground="#666666")
         info_label.pack(side=tk.RIGHT)
     
@@ -477,8 +477,8 @@ class NovelDownloaderGUI(tk.Tk):
         messagebox.showinfo("关于番茄小说下载器",
                            f"番茄小说下载器 - 精简版 v{self.version}\n\n"
                            "这是一个简单的工具，用于从番茄小说下载您喜欢的小说\n\n"
-                           "作者: Dlmos (Dlmily)\n"
-                           "GitHub: github.com/Dlmily/Tomato-Novel-Downloader-Lite")
+                           "作者: POf-L\n"
+                           "GitHub: github.com/POf-L/Fanqie-Tomato-Downloader")
     
     def reset_settings(self):
         """重置所有设置到默认值"""
