@@ -15,11 +15,6 @@ on:
         type: boolean
         default: false
 
-# 添加必要的权限
-permissions:
-  contents: write  # 允许工作流创建releases和上传文件
-  actions: read    # 允许工作流读取Actions
-
 jobs:
   build-windows:
     runs-on: windows-latest
