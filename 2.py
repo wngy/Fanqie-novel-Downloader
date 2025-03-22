@@ -12,9 +12,26 @@ import ebooklib
 from ebooklib import epub
 
 # 全局变量
-cookie_path = "cookie.json"
+import sys
+import os
+import logging  # 添加日志模块
+
+def get_resource_path(relative_path):
+    """获取资源的绝对路径，兼容开发环境和打包环境"""
+    if hasattr(sys, '_MEIPASS'):  # PyInstaller打包环境
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath("."), relative_path)  # 开发环境
+
+# 设置日志
+logging.basicConfig(level=logging.INFO,
+                   format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# 配置
+cookie_path = get_resource_path("cookie.json")
 MAX_WORKERS = 5  # 默认线程数
 OUTPUT_FORMAT = "txt"  # 默认输出格式: txt 或 epub
+API_URL = "http://rehaofan.jingluo.love/content"  # API URL，提取为变量便于修改
 
 # 获取随机User-Agent
 def get_random_user_agent():
@@ -38,12 +55,22 @@ def get_cookie():
         try:
             response = requests.get('https://fanqienovel.com', headers=headers, timeout=10)
             if response.status_code == 200 and len(response.text) > 200:
-                with open(cookie_path, 'w', encoding='utf-8') as f:
-                    json.dump(cookie, f)
-                print(f"cookie已生成: {cookie}")
+                try:
+                    with open(cookie_path, 'w', encoding='utf-8') as f:
+                        json.dump(cookie, f)
+                    logger.info(f"cookie已生成: {cookie}")
+                except Exception as e:
+                    logger.warning(f"无法保存cookie到文件: {e}，但将继续使用当前cookie")
                 return cookie
         except Exception as e:
-            print(f"请求失败: {e}")
+            logger.error(f"请求失败: {e}")
+    # 如果无法获取新cookie，尝试从文件加载
+    try:
+        if os.path.exists(cookie_path):
+            with open(cookie_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception as e:
+        logger.error(f"从文件加载cookie失败: {e}")
     return None
 
 # 模拟浏览器请求
@@ -95,7 +122,7 @@ def down_text(it, headers):
     while retry_count < max_retries:
         try:
             # 使用新API获取内容
-            api_url = f"http://rehaofan.jingluo.love/content?item_id={it}"
+            api_url = f"{API_URL}?item_id={it}"
             response = requests.get(api_url, headers=headers, timeout=10)  # 超时时间
             data = response.json()
             
@@ -114,14 +141,14 @@ def down_text(it, headers):
                 return content
         except requests.exceptions.RequestException as e:
             retry_count += 1
-            print(f"网络请求失败，正在重试({retry_count}/{max_retries}): {str(e)}")
+            logger.warning(f"网络请求失败，正在重试({retry_count}/{max_retries}): {str(e)}")
             time.sleep(2 * retry_count)  # 重试延迟时间
         except Exception as e:
             retry_count += 1
-            print(f"下载出错，正在重试({retry_count}/{max_retries}): {str(e)}")
+            logger.warning(f"下载出错，正在重试({retry_count}/{max_retries}): {str(e)}")
             time.sleep(1 * retry_count)
     
-    print("达到最大重试次数，下载失败")
+    logger.error(f"达到最大重试次数，下载失败: {it}")
     return None
 
 def get_book_info(book_id, headers):
@@ -151,7 +178,7 @@ def get_book_info(book_id, headers):
         print(f"获取书籍信息失败: {str(e)}")
         return None, None, None
 
-def extract_chatper_titles(soup):
+def extract_chapter_titles(soup):
     """提取章节标题列表"""
     titles = []
     chapter_items = soup.select("div.chapter-item")
@@ -166,49 +193,8 @@ def extract_chatper_titles(soup):
     
     return titles
 
-def funLog(text, headers):
-    """解析章节内容"""
-    content = down_text(text.url.split('/')[-1], headers)
-    return content
 
-def extract_chatper_titles(soup):
-    """提取章节标题"""
-    titles = []
-    for item in soup.select('div.chapter-item'):
-        title = item.get_text(strip=True)
-        if title:
-            titles.append(title)
-    return titles
 
-def get_book_info(book_id, headers):
-    """获取书名、作者、简介"""
-    url = f'https://fanqienovel.com/page/{book_id}'
-    response = requests.get(url, headers=headers)
-    if response.status_code != 200:
-        print(f"网络请求失败，状态码: {response.status_code}")
-        return None, None, None
-
-    soup = bs4.BeautifulSoup(response.text, 'html.parser')
-    
-    # 获取书名
-    name_element = soup.find('h1')
-    name = name_element.text if name_element else "未知书名"
-    
-    # 获取作者
-    author_name_element = soup.find('div', class_='author-name')
-    author_name = None
-    if author_name_element:
-        author_name_span = author_name_element.find('span', class_='author-name-text')
-        author_name = author_name_span.text if author_name_span else "未知作者"
-    
-    # 获取简介
-    description_element = soup.find('div', class_='page-abstract-content')
-    description = None
-    if description_element:
-        description_p = description_element.find('p')
-        description = description_p.text if description_p else "无简介"
-    
-    return name, author_name, description
 
 def create_epub_book(name, author_name, description, chapters_data, save_path):
     """创建EPUB电子书"""
@@ -293,7 +279,7 @@ def create_epub_book(name, author_name, description, chapters_data, save_path):
 def download_chapter(div, headers, save_path, book_name, titles, i, total, chapters_data=None):
     """下载单个章节"""
     if not div.a:
-        print(f"第 {i + 1} 章没有链接，跳过")
+        logger.warning(f"第 {i + 1} 章没有链接，跳过")
         return None
     
     detail_url = f"https://fanqienovel.com{div.a['href']}"
@@ -310,10 +296,10 @@ def download_chapter(div, headers, save_path, book_name, titles, i, total, chapt
             # 为EPUB格式收集章节数据
             chapters_data.append((titles[i], content))
         
-        print(f'已下载 {i + 1}/{total}')
+        logger.info(f'已下载 {i + 1}/{total}')
         return content
     else:
-        print(f"第 {i + 1} 章下载失败")
+        logger.error(f"第 {i + 1} 章下载失败")
         return None
 
 def Run(book_id, save_path):
@@ -323,7 +309,7 @@ def Run(book_id, save_path):
     # 获取书籍信息
     name, author_name, description = get_book_info(book_id, headers)
     if not name:
-        print("无法获取书籍信息，请检查小说ID或网络连接。")
+        logger.error("无法获取书籍信息，请检查小说ID或网络连接。")
         return
 
     # 获取章节列表
@@ -333,7 +319,7 @@ def Run(book_id, save_path):
 
     li_list = soup.select("div.chapter-item")
     total = len(li_list)
-    titles = extract_chatper_titles(soup)
+    titles = extract_chapter_titles(soup)
 
     os.makedirs(save_path, exist_ok=True)
 
@@ -352,11 +338,19 @@ def Run(book_id, save_path):
                 futures.append(executor.submit(download_chapter, div, headers, save_path, name, titles, i, total))
             
             # 使用进度条
-            for _ in tqdm(as_completed(futures), total=total, desc="下载进度"):
-                pass
-
-        print(f"小说已下载到: {output_file_path}")
-        return output_file_path
+            # 使用进度条并收集失败的章节
+            failed_chapters = []
+            for i, future in enumerate(tqdm(as_completed(futures), total=total, desc="下载进度")):
+                if future.result() is None:
+                    # 记录失败的章节索引
+                    failed_chapters.append(i)
+            
+            # 显示下载结果统计
+            if failed_chapters:
+                logger.warning(f"有 {len(failed_chapters)} 章下载失败: {failed_chapters}")
+            
+            logger.info(f"小说已下载到: {output_file_path}")
+            return output_file_path
     
     elif OUTPUT_FORMAT == "epub":
         chapters_data = []
@@ -368,20 +362,27 @@ def Run(book_id, save_path):
                 headers = get_headers()
                 futures.append(executor.submit(download_chapter, div, headers, save_path, name, titles, i, total, chapters_data))
             
-            # 使用进度条
-            for _ in tqdm(as_completed(futures), total=total, desc="下载进度"):
-                pass
+            # 使用进度条并收集失败的章节
+            failed_chapters = []
+            for i, future in enumerate(tqdm(as_completed(futures), total=total, desc="下载进度")):
+                if future.result() is None:
+                    # 记录失败的章节索引
+                    failed_chapters.append(i)
+            
+            # 显示下载结果统计
+            if failed_chapters:
+                logger.warning(f"有 {len(failed_chapters)} 章下载失败: {failed_chapters}")
         
         # 创建EPUB文件
         output_file_path = create_epub_book(name, author_name, description, chapters_data, save_path)
-        print(f"小说已下载到: {output_file_path}")
+        logger.info(f"小说已下载到: {output_file_path}")
         return output_file_path
     
     else:
-        print(f"不支持的输出格式: {OUTPUT_FORMAT}，请使用 'txt' 或 'epub'")
+        logger.error(f"不支持的输出格式: {OUTPUT_FORMAT}，请使用 'txt' 或 'epub'")
         return None
 def main():
-    global OUTPUT_FORMAT
+    global OUTPUT_FORMAT, MAX_WORKERS, API_URL
     
     print("欢迎使用番茄小说下载器精简版！")
     print("作者：Dlmos（Dlmily）")
@@ -391,8 +392,34 @@ def main():
     print("赞助/了解新产品：https://afdian.com/a/dlbaokanluntanos")
     print("")
     
+    # 尝试加载配置文件
+    try:
+        config_path = get_resource_path("config.json")
+        if os.path.exists(config_path):
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                API_URL = config.get("api_url", API_URL)
+                MAX_WORKERS = config.get("max_workers", MAX_WORKERS)
+                OUTPUT_FORMAT = config.get("output_format", OUTPUT_FORMAT)
+                logger.info(f"已加载配置文件: API_URL={API_URL}, MAX_WORKERS={MAX_WORKERS}, OUTPUT_FORMAT={OUTPUT_FORMAT}")
+    except Exception as e:
+        logger.warning(f"加载配置文件失败: {e}，将使用默认配置")
     book_id = input("请输入小说 ID：")
-    save_path = input("请输入保存路径：")
+    
+    # 获取默认保存路径（用户文档文件夹）
+    default_save_path = os.path.join(os.path.expanduser("~"), "Documents", "番茄小说下载")
+    save_path_input = input(f"请输入保存路径 [默认: {default_save_path}]: ")
+    save_path = save_path_input.strip() if save_path_input.strip() else default_save_path
+    
+    # 确保保存路径存在
+    if not os.path.exists(save_path):
+        try:
+            os.makedirs(save_path)
+            logger.info(f"已创建保存路径: {save_path}")
+        except Exception as e:
+            logger.error(f"创建保存路径失败: {e}")
+            return
+    
     
     # 让用户选择输出格式
     while True:
@@ -424,9 +451,15 @@ def main():
                 print("线程数必须在1-10之间")
         except ValueError:
             print("请输入有效的数字")
+    logger.info(f"开始下载，输出格式: {OUTPUT_FORMAT.upper()}，线程数: {MAX_WORKERS}")
+    start_time = time.time()
+    result = Run(book_id, save_path)
+    elapsed_time = time.time() - start_time
     
-    print(f"开始下载，输出格式: {OUTPUT_FORMAT.upper()}，线程数: {MAX_WORKERS}")
-    Run(book_id, save_path)
+    if result:
+        logger.info(f"下载完成！总耗时: {elapsed_time:.2f} 秒")
+    else:
+        logger.warning("下载过程中出现错误，请检查日志")
     print("下载完成！")
 
 if __name__ == "__main__":

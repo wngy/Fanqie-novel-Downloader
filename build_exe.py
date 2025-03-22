@@ -15,11 +15,12 @@ args = [
     '--clean',
     # '--icon=' + icon_path,  # 如果有图标文件，取消此行注释
     '--add-data=2.py;.',
-    # '--add-data=cookie.json;.',  # 如果有cookie文件，取消此行注释
+    '--add-data=cookie.json;.',  # 添加cookie文件
     '--hidden-import=requests',
     '--hidden-import=bs4',
     '--hidden-import=lxml',
     '--hidden-import=ebooklib',
+    '--hidden-import=ebooklib.epub',  # 明确导入ebooklib.epub模块
     '--hidden-import=tqdm',
 ]
 

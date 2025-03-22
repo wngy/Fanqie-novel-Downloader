@@ -7,8 +7,18 @@ import time
 from tqdm import tqdm
 import importlib.util
 
+# 获取正确的2.py文件路径
+def get_script_path():
+    if getattr(sys, 'frozen', False):
+        # 如果是打包后的环境
+        return os.path.join(sys._MEIPASS, "2.py")
+    else:
+        # 如果是开发环境
+        return "2.py"
+
 # 导入2.py中的函数
-spec = importlib.util.spec_from_file_location("novel_downloader", "2.py")
+script_path = get_script_path()
+spec = importlib.util.spec_from_file_location("novel_downloader", script_path)
 novel_downloader = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(novel_downloader)
 
