@@ -64,14 +64,13 @@ jobs:
           # 确保输出目录存在
           os.makedirs(save_path, exist_ok=True)
 
-          # 导入2.py中的函数
-          spec = importlib.util.spec_from_file_location("novel_downloader", "2.py")
+          # 从gui.py导入Run函数和CONFIG
+          spec = importlib.util.spec_from_file_location("novel_downloader", "gui.py")
           novel_downloader = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(novel_downloader)
 
-          # 设置参数
-          novel_downloader.MAX_WORKERS = threads
-          novel_downloader.OUTPUT_FORMAT = output_format
+          # 设置参数到CONFIG中
+          novel_downloader.CONFIG["max_workers"] = threads
 
           # 启动下载
           print(f"开始下载小说 ID: {novel_id}")

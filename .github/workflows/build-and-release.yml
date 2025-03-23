@@ -102,8 +102,7 @@ jobs:
           
       - name: 准备构建脚本
         run: |
-          # 修改为macOS格式的路径分隔符
-          sed -i '' 's/--add-data=2.py;./--add-data=2.py:./' build_exe.py
+          # 修改为macOS格式的路径分隔符，不再需要2.py
           sed -i '' 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
           
           # 确保包含ebooklib.epub
@@ -158,8 +157,7 @@ jobs:
           
       - name: 准备构建脚本
         run: |
-          # 修改为Linux格式的路径分隔符
-          sed -i 's/--add-data=2.py;./--add-data=2.py:./' build_exe.py
+          # 修改为Linux格式的路径分隔符，不再需要2.py
           sed -i 's/--add-data=cookie.json;./--add-data=cookie.json:./' build_exe.py
           
           # 确保包含ebooklib.epub
