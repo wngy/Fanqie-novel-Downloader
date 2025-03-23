@@ -66,24 +66,42 @@ class CustomTqdm(tqdm):
             # 限制更新频率，避免UI卡顿
             current_time = time.time()
             if current_time - self._last_update_time > self._update_interval:
+<<<<<<< HEAD
                 self._last_update_time = current_time
                 # 使用after方法在主线程中更新UI
                 if self.progress_var and hasattr(self.progress_var, 'set'):
                     try:
                         # 计算百分比
+=======
+                try:
+                    if self.progress_var and hasattr(self.progress_var, 'set'):
+                        # 在主线程中更新UI
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
                         if self.total and self.total > 0:
                             percentage = min(100, max(0, int(self.n / self.total * 100)))
                         else:
                             percentage = 0
+<<<<<<< HEAD
                         
                         # 在主线程中更新进度条
                         self._update_ui(percentage)
                     except Exception as e:
                         print(f"准备进度条更新时出错: {str(e)}", file=sys.__stdout__)
+=======
+                        self.progress_var.set(percentage)
+                        
+                        if self.progress_label and hasattr(self.progress_label, 'configure'):
+                            text = f"下载进度: {percentage}% ({self.n}/{self.total or '?'})"
+                            self.progress_label.configure(text=text)
+                except Exception as e:
+                    print(f"更新进度条时出错: {str(e)}", file=sys.__stdout__)
+                self._last_update_time = current_time
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
             return displayed
         except Exception as e:
             print(f"tqdm更新时出错: {str(e)}", file=sys.__stdout__)
             return False
+<<<<<<< HEAD
     
     def _update_ui(self, percentage):
         """在主线程中更新UI"""
@@ -120,6 +138,8 @@ class CustomTqdm(tqdm):
         else:
             percentage = 0
         self._update_ui(percentage)
+=======
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
 
 class NovelDownloaderGUI(tk.Tk):
     def __init__(self):
@@ -133,7 +153,11 @@ class NovelDownloaderGUI(tk.Tk):
             self.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # 添加版本信息
+<<<<<<< HEAD
             self.version = "1.1.3"
+=======
+            self.version = "1.1.2"
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
             
             # 状态变量
             self.is_downloading = False
@@ -592,7 +616,10 @@ class NovelDownloaderGUI(tk.Tk):
         sys.stdout = self.stdout_redirect
         
         # 替换tqdm类，使其更新GUI进度条
+<<<<<<< HEAD
         # 直接修改2.py中的全局tqdm变量，而不是替换导入
+=======
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
         novel_downloader.tqdm = lambda *args, **kwargs: CustomTqdm(
             *args, **kwargs, progress_var=self.progress_var, progress_label=self.progress_label
         )
@@ -600,10 +627,15 @@ class NovelDownloaderGUI(tk.Tk):
         # 设置线程数和输出格式
         threads = int(self.threads_var.get())
         output_format = self.format_var.get()
+<<<<<<< HEAD
         
         # 将设置直接应用到2.py的CONFIG中
         if hasattr(novel_downloader, 'CONFIG'):
             novel_downloader.CONFIG["max_workers"] = threads
+=======
+        novel_downloader.MAX_WORKERS = threads
+        novel_downloader.OUTPUT_FORMAT = output_format
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
         
         # 在新线程中运行下载
         self.download_thread = threading.Thread(target=self.run_download, args=(book_id, save_path, output_format))
@@ -614,7 +646,11 @@ class NovelDownloaderGUI(tk.Tk):
         try:
             print(f"开始下载小说 ID: {book_id}")
             print(f"保存路径: {save_path}")
+<<<<<<< HEAD
             print(f"使用线程数: {novel_downloader.CONFIG['max_workers']}")
+=======
+            print(f"使用线程数: {novel_downloader.MAX_WORKERS}")
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
             print(f"输出格式: {output_format}")
             
             # 确保保存路径存在
@@ -625,12 +661,16 @@ class NovelDownloaderGUI(tk.Tk):
                 raise Exception(f"创建保存目录失败: {str(e)}")
             
             try:
+<<<<<<< HEAD
                 # 确保设置了全局配置
                 if hasattr(novel_downloader, 'CONFIG'):
                     novel_downloader.CONFIG["max_workers"] = int(self.threads_var.get())
                 
                 # 调用2.py的Run函数（只传递book_id和save_path两个参数）
                 novel_downloader.Run(book_id, save_path)
+=======
+                novel_downloader.Run(book_id, save_path, output_format)
+>>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
                 self.after(100, self.download_complete, "下载完成！")
             except AttributeError as e:
                 if "'NoneType' object has no attribute" in str(e):
