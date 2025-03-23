@@ -53,33 +53,65 @@ jobs:
           cat > download_novel.py << 'EOF'
           import sys
           import os
+          import threading
+          import tkinter as tk
+          from tkinter import ttk
+          import time
           import importlib.util
-
+          
+          # 导入gui.py中的所有内容
+          spec = importlib.util.spec_from_file_location("gui", "gui.py")
+          gui = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(gui)
+          
           # 获取参数
           novel_id = sys.argv[1]
           output_format = sys.argv[2].lower()
           threads = int(sys.argv[3])
           save_path = "novel_output"
-
+          
           # 确保输出目录存在
           os.makedirs(save_path, exist_ok=True)
-
-          # 从gui.py导入Run函数和CONFIG
-          spec = importlib.util.spec_from_file_location("novel_downloader", "gui.py")
-          novel_downloader = importlib.util.module_from_spec(spec)
-          spec.loader.exec_module(novel_downloader)
-
-          # 设置参数到CONFIG中
-          novel_downloader.CONFIG["max_workers"] = threads
-
-          # 启动下载
+          
+          # 设置线程数
+          gui.CONFIG["max_workers"] = threads
+          
+          # 创建一个不需要真实GUI的下载器
+          class CommandLineDownloader(gui.NovelDownloaderGUI):
+              def __init__(self):
+                  # 不调用父类的__init__方法，因为它会创建GUI
+                  # 初始化必要的属性
+                  self.is_downloading = False
+                  self.downloaded_chapters = set()
+                  self.content_cache = gui.OrderedDict()
+                  
+              def log(self, message):
+                  """在命令行中显示日志"""
+                  print(message)
+              
+              def update_progress(self, value, status_text):
+                  """在命令行中显示进度"""
+                  print(f"进度: {value:.2f}% - {status_text}")
+              
+              def start_download_cli(self, novel_id, save_path):
+                  """开始下载（命令行版本）"""
+                  self.is_downloading = True
+                  try:
+                      self.download_novel(novel_id, save_path)
+                  finally:
+                      self.is_downloading = False
+          
           print(f"开始下载小说 ID: {novel_id}")
           print(f"保存路径: {save_path}")
           print(f"使用线程数: {threads}")
           print(f"输出格式: {output_format}")
-          novel_downloader.Run(novel_id, save_path)
+          
+          # 创建下载器实例并开始下载
+          downloader = CommandLineDownloader()
+          downloader.start_download_cli(novel_id, save_path)
+          
           print("下载完成！")
-
+          
           # 列出下载的文件
           print("\n下载的文件列表:")
           for file in os.listdir(save_path):
