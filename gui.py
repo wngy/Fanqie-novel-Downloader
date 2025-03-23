@@ -5,22 +5,454 @@ import os
 import sys
 import time
 from tqdm import tqdm
-import importlib.util
+import requests
+import bs4
+import re
+import random
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm as tqdm_original
+from collections import OrderedDict
 
-# 获取正确的2.py文件路径
-def get_script_path():
-    if getattr(sys, 'frozen', False):
-        # 如果是打包后的环境
-        return os.path.join(sys._MEIPASS, "2.py")
-    else:
-        # 如果是开发环境
-        return "2.py"
+# 全局配置
+CONFIG = {
+    "max_workers": 5,
+    "max_retries": 3,
+    "request_timeout": 15,
+    "status_file": "chapter.json",
+    "user_agents": [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    ],
+    "api_sources": {
+        "primary": "http://rehaofan.jingluo.love",
+        "backup": "https://api.cenguigui.cn/api/tomato/api",
+        "search": "https://api.cenguigui.cn/api/tomato/api/search.php",
+        "detail": "https://api.cenguigui.cn/api/tomato/api/detail.php",
+        "catalog": "https://api.cenguigui.cn/api/tomato/api/catalog.php",
+        "all_items": "https://api.cenguigui.cn/api/tomato/api/all_items.php",
+        "content": "https://api.cenguigui.cn/api/tomato/api/content.php",
+        "multi_content": "https://api.cenguigui.cn/api/tomato/api/multi_content.php",
+        "multi_detail": "https://api.cenguigui.cn/api/tomato/api/multi-detail.php",
+        "item_summary": "https://api.cenguigui.cn/api/tomato/api/item_summary.php",
+        "category_front": "https://api.cenguigui.cn/api/tomato/api/category-front.php",
+        "audio": "https://api.cenguigui.cn/api/tomato/api/audio.php"
+    }
+}
 
-# 导入2.py中的函数
-script_path = get_script_path()
-spec = importlib.util.spec_from_file_location("novel_downloader", script_path)
-novel_downloader = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(novel_downloader)
+# 全局变量，存储GUI进度相关变量
+GLOBAL_PROGRESS_VAR = None
+GLOBAL_PROGRESS_LABEL = None
+
+# 全局变量，用于GUI覆盖tqdm
+tqdm = tqdm_original  # 默认使用原始tqdm，GUI会覆盖此变量
+
+def get_headers(cookie=None):
+    """生成随机请求头"""
+    return {
+        "User-Agent": random.choice(CONFIG["user_agents"]),
+        "Cookie": cookie if cookie else get_cookie()
+    }
+
+def get_cookie():
+    """生成或加载Cookie"""
+    cookie_path = "cookie.json"
+    if os.path.exists(cookie_path):
+        try:
+            with open(cookie_path, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    
+    # 生成新Cookie
+    for _ in range(10):
+        novel_web_id = random.randint(10**18, 10**19-1)
+        cookie = f'novel_web_id={novel_web_id}'
+        try:
+            resp = requests.get(
+                'https://fanqienovel.com',
+                headers={"User-Agent": random.choice(CONFIG["user_agents"])},
+                cookies={"novel_web_id": str(novel_web_id)},
+                timeout=10
+            )
+            if resp.ok:
+                with open(cookie_path, 'w') as f:
+                    json.dump(cookie, f)
+                return cookie
+        except Exception as e:
+            print(f"Cookie生成失败: {str(e)}")
+            time.sleep(0.5)
+    raise Exception("无法获取有效Cookie")
+
+def down_text(it, mod=1):
+    """下载章节内容"""
+    max_retries = CONFIG.get('max_retries', 3)
+    retry_count = 0
+    content = ""
+    
+    while retry_count < max_retries:
+        try:
+            # 尝试使用主API获取内容
+            api_url = f"{CONFIG['api_sources']['primary']}/content?item_id={it}"
+            response = requests.get(api_url, timeout=CONFIG["request_timeout"])
+            data = response.json()
+            
+            if data.get("code") == 0 and data.get("data", {}).get("content", ""):
+                content = data.get("data", {}).get("content", "")
+            else:
+                # 如果主API失败，尝试直接使用content API
+                content_api_url = f"{CONFIG['api_sources']['content']}?item_id={it}"
+                response = requests.get(content_api_url, timeout=CONFIG["request_timeout"])
+                data = response.json()
+                if data.get("code") == 0:
+                    content = data.get("data", {}).get("content", "")
+                    
+                # 如果仍然失败，尝试备用API
+                if not content:
+                    backup_api_url = f"{CONFIG['api_sources']['backup']}/content.php?item_id={it}"
+                    response = requests.get(backup_api_url, timeout=CONFIG["request_timeout"])
+                    data = response.json()
+                    if data.get("code") == 0:
+                        content = data.get("data", {}).get("content", "")
+            
+            if content:
+                # 移除HTML标签
+                content = re.sub(r'<header>.*?</header>', '', content, flags=re.DOTALL)
+                content = re.sub(r'<footer>.*?</footer>', '', content, flags=re.DOTALL)
+                content = re.sub(r'</?article>', '', content)
+                content = re.sub(r'<p idx="\d+">', '\n', content)
+                content = re.sub(r'</p>', '\n', content)
+                content = re.sub(r'<[^>]+>', '', content)
+                content = re.sub(r'\\u003c|\\u003e', '', content)
+                content = re.sub(r'\n{2,}', '\n', content).strip()
+                content = '\n'.join(['    ' + line if line.strip() else line for line in content.split('\n')])
+                break
+        except Exception as e:
+            print(f"请求失败: {str(e)}, 重试第{retry_count + 1}次...")
+            retry_count += 1
+            time.sleep(1 * retry_count)
+    
+    return content
+
+def get_book_info(book_id, headers):
+    """获取书名、作者、简介"""
+    # 首先尝试从网页获取信息
+    url = f'https://fanqienovel.com/page/{book_id}'
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            soup = bs4.BeautifulSoup(response.text, 'html.parser')
+            
+            # 获取书名
+            name_element = soup.find('h1')
+            name = name_element.text if name_element else None
+            
+            # 获取作者
+            author_name_element = soup.find('div', class_='author-name')
+            author_name = None
+            if author_name_element:
+                author_name_span = author_name_element.find('span', class_='author-name-text')
+                author_name = author_name_span.text if author_name_span else None
+            
+            # 获取简介
+            description_element = soup.find('div', class_='page-abstract-content')
+            description = None
+            if description_element:
+                description_p = description_element.find('p')
+                description = description_p.text if description_p else None
+            
+            if name and author_name and description:
+                return name, author_name, description
+    except Exception as e:
+        print(f"从网页获取书籍信息失败: {str(e)}")
+    
+    # 如果网页获取失败，尝试使用detail API获取
+    try:
+        detail_api_url = f"{CONFIG['api_sources']['detail']}?book_id={book_id}"
+        response = requests.get(detail_api_url, timeout=CONFIG["request_timeout"])
+        data = response.json()
+        
+        if data.get("code") == 0 and data.get("data"):
+            book_data = data.get("data", {})
+            name = book_data.get("book_name", "未知书名")
+            author_name = book_data.get("author_name", "未知作者")
+            description = book_data.get("abstract", "无简介")
+            return name, author_name, description
+    except Exception as e:
+        print(f"从detail API获取书籍信息失败: {str(e)}")
+    
+    # 如果detail API也失败，尝试使用备用API
+    try:
+        backup_api_url = f"{CONFIG['api_sources']['backup']}/detail.php?book_id={book_id}"
+        response = requests.get(backup_api_url, timeout=CONFIG["request_timeout"])
+        data = response.json()
+        
+        if data.get("code") == 0 and data.get("data"):
+            book_data = data.get("data", {})
+            name = book_data.get("book_name", "未知书名")
+            author_name = book_data.get("author_name", "未知作者")
+            description = book_data.get("abstract", "无简介")
+            return name, author_name, description
+    except Exception as e:
+        print(f"从备用API获取书籍信息失败: {str(e)}")
+    
+    print(f"无法获取书籍信息，状态码: {response.status_code if 'response' in locals() else '未知'}")
+    return "未知书名", "未知作者", "无简介"
+
+def extract_chapters(soup):
+    """解析章节列表"""
+    chapters = []
+    for idx, item in enumerate(soup.select('div.chapter-item')):
+        a_tag = item.find('a')
+        if not a_tag:
+            continue
+        
+        raw_title = a_tag.get_text(strip=True)
+        
+        # 特殊章节
+        if re.match(r'^(番外|特别篇|if线)\s*', raw_title):
+            final_title = raw_title
+        else:
+            clean_title = re.sub(
+                r'^第[一二三四五六七八九十百千\d]+章\s*',
+                '', 
+                raw_title
+            ).strip()
+            final_title = f"第{idx+1}章 {clean_title}"
+        
+        chapters.append({
+            "id": a_tag['href'].split('/')[-1],
+            "title": final_title,
+            "url": f"https://fanqienovel.com{a_tag['href']}",
+            "index": idx
+        })
+    
+    # 检查章节顺序
+    expected_indices = set(range(len(chapters)))
+    actual_indices = set(ch["index"] for ch in chapters)
+    if expected_indices != actual_indices:
+        print("警告：章节顺序异常，可能未按阿拉伯数字顺序排列！")
+        chapters.sort(key=lambda x: x["index"])
+    
+    return chapters
+
+def load_status(save_path):
+    """加载下载状态"""
+    status_file = os.path.join(save_path, CONFIG["status_file"])
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, 'r') as f:
+                return set(json.load(f))
+        except:
+            pass
+    return set()
+
+def save_status(save_path, downloaded):
+    """保存下载状态"""
+    status_file = os.path.join(save_path, CONFIG["status_file"])
+    with open(status_file, 'w') as f:
+        json.dump(list(downloaded), f)
+
+def download_chapter(chapter, headers, save_path, book_name, downloaded):
+    """下载单个章节"""
+    if chapter["id"] in downloaded:
+        return None
+    
+    content = down_text(chapter["id"])
+    if content:
+        output_file_path = os.path.join(save_path, f"{book_name}.txt")
+        with open(output_file_path, 'a', encoding='utf-8') as f:
+            f.write(f'{chapter["title"]}\n')
+            f.write(content + '\n\n')
+        downloaded.add(chapter["id"])
+        return chapter["index"], content
+    return None
+
+def search_novels(keyword, offset=0, limit=20):
+    """搜索小说
+    Args:
+        keyword: 搜索关键词
+        offset: 结果偏移量
+        limit: 返回结果数量限制
+        
+    Returns:
+        搜索结果列表，每个元素包含书名、作者、简介、封面URL等
+    """
+    try:
+        # 使用search API搜索
+        search_url = f"{CONFIG['api_sources']['search']}?query={keyword}&offset={offset}"
+        response = requests.get(search_url, timeout=CONFIG["request_timeout"])
+        data = response.json()
+        
+        if data.get("code") == 0 and data.get("data", {}).get("search_book_list"):
+            results = []
+            books = data.get("data", {}).get("search_book_list", [])
+            
+            for book in books[:limit]:
+                results.append({
+                    "book_id": book.get("book_id"),
+                    "name": book.get("book_name", "未知书名"),
+                    "author": book.get("author_name", "未知作者"),
+                    "description": book.get("abstract", "无简介"),
+                    "cover_url": book.get("cover_url", ""),
+                    "category": book.get("category_name", "未知分类"),
+                    "word_count": book.get("word_count", 0),
+                    "score": book.get("score", 0)
+                })
+            
+            return results
+    except Exception as e:
+        print(f"搜索小说失败: {str(e)}")
+    
+    return []
+
+def Run(book_id, save_path):
+    """运行下载"""
+    headers = get_headers()
+    
+    # 获取书籍信息
+    name, author_name, description = get_book_info(book_id, headers)
+    if name == "未知书名":
+        print("无法获取书籍信息，请检查小说ID或网络连接。")
+        return
+
+    # 尝试获取章节列表
+    chapters = []
+    try:
+        # 首先尝试从网页获取章节列表
+        url = f'https://fanqienovel.com/page/{book_id}'
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            soup = bs4.BeautifulSoup(response.text, 'lxml')
+            chapters = extract_chapters(soup)
+    except Exception as e:
+        print(f"从网页获取章节列表失败: {str(e)}")
+    
+    # 如果网页获取失败，尝试使用all_items API获取完整章节列表
+    if not chapters:
+        try:
+            all_items_url = f"{CONFIG['api_sources']['all_items']}?book_id={book_id}"
+            response = requests.get(all_items_url, timeout=CONFIG["request_timeout"])
+            data = response.json()
+            
+            if data.get("code") == 0 and data.get("data", {}).get("item_list"):
+                ch_list = data.get("data", {}).get("item_list", [])
+                for idx, ch in enumerate(ch_list):
+                    chapters.append({
+                        "id": ch.get("item_id"),
+                        "title": f"第{idx+1}章 {ch.get('title')}",
+                        "url": None,
+                        "index": idx
+                    })
+                print(f"从all_items API获取到 {len(chapters)} 个章节")
+        except Exception as e:
+            print(f"从all_items API获取章节列表失败: {str(e)}")
+    
+    # 如果all_items API获取失败，尝试使用catalog API
+    if not chapters:
+        try:
+            catalog_url = f"{CONFIG['api_sources']['catalog']}?book_id={book_id}"
+            response = requests.get(catalog_url, timeout=CONFIG["request_timeout"])
+            data = response.json()
+            
+            if data.get("code") == 0 and data.get("data", {}).get("chapter_list"):
+                ch_list = data.get("data", {}).get("chapter_list", [])
+                for idx, ch in enumerate(ch_list):
+                    chapters.append({
+                        "id": ch.get("item_id"),
+                        "title": f"第{idx+1}章 {ch.get('title')}",
+                        "url": None,
+                        "index": idx
+                    })
+                print(f"从catalog API获取到 {len(chapters)} 个章节")
+        except Exception as e:
+            print(f"从catalog API获取章节列表失败: {str(e)}")
+    
+    # 如果前面的API都失败，尝试使用备用API
+    if not chapters:
+        try:
+            backup_api_url = f"{CONFIG['api_sources']['backup']}/catalog.php?book_id={book_id}"
+            response = requests.get(backup_api_url, timeout=CONFIG["request_timeout"])
+            data = response.json()
+            
+            if data.get("code") == 0 and data.get("data", {}).get("chapter_list"):
+                ch_list = data.get("data", {}).get("chapter_list", [])
+                for idx, ch in enumerate(ch_list):
+                    chapters.append({
+                        "id": ch.get("item_id"),
+                        "title": f"第{idx+1}章 {ch.get('title')}",
+                        "url": None,
+                        "index": idx
+                    })
+                print(f"从备用API获取到 {len(chapters)} 个章节")
+        except Exception as e:
+            print(f"从备用API获取章节列表失败: {str(e)}")
+    
+    if not chapters:
+        print("无法获取章节列表，请检查小说ID或网络连接。")
+        return
+    
+    # 确保保存路径存在
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    
+    # 加载已下载状态
+    downloaded = load_status(save_path)
+    
+    # 创建或覆盖输出文件
+    output_file_path = os.path.join(save_path, f"{name}.txt")
+    with open(output_file_path, 'w', encoding='utf-8') as f:
+        # 写入书籍信息
+        f.write(f"《{name}》\n")
+        f.write(f"作者: {author_name}\n\n")
+        f.write(f"简介:\n{description}\n\n")
+        f.write("=" * 30 + "\n\n")
+    
+    print(f"\n开始下载《{name}》，共 {len(chapters)} 章\n")
+    print(f"已下载 {len(downloaded)} 章，待下载 {len(chapters) - len([ch for ch in chapters if ch['id'] in downloaded])} 章\n")
+    
+    # 多线程下载
+    max_workers = CONFIG.get("max_workers", 5)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有下载任务
+        future_to_chapter = {
+            executor.submit(download_chapter, chapter, headers, save_path, name, downloaded): chapter
+            for chapter in chapters
+        }
+        
+        # 确保使用正确的tqdm实例
+        from tqdm import tqdm as tqdm_func
+        # 使用tqdm显示进度条
+        with tqdm_func(total=len(chapters), desc="下载进度") as pbar:
+            completed_count = len(downloaded)
+            pbar.update(completed_count)
+            
+            for future in as_completed(future_to_chapter):
+                result = future.result()
+                if result:
+                    chapter_idx, _ = result
+                    pbar.update(1)
+                    
+                    # 每下载5章保存一次状态
+                    completed_count += 1
+                    if completed_count % 5 == 0:
+                        save_status(save_path, downloaded)
+    
+    # 最后保存状态
+    save_status(save_path, downloaded)
+    
+    print(f"\n下载完成！文件保存在：{output_file_path}\n")
+    print(f"总章节数: {len(chapters)}, 成功下载: {len(downloaded)}\n")
+    
+    # 返回下载结果信息
+    return {
+        "book_name": name,
+        "author": author_name,
+        "total_chapters": len(chapters),
+        "downloaded_chapters": len(downloaded),
+        "file_path": output_file_path
+    }
 
 class RedirectText:
     """用于重定向输出到GUI的类"""
@@ -51,95 +483,106 @@ class RedirectText:
     def flush(self):
         pass
 
-class CustomTqdm(tqdm):
+class CustomTqdm(tqdm_original):
     """自定义tqdm进度条，将更新发送到GUI"""
-    def __init__(self, *args, progress_var=None, progress_label=None, **kwargs):
+    def __init__(self, *args, **kwargs):
+        # 使用最基本的初始化，防止出现问题
         super().__init__(*args, **kwargs)
-        self.progress_var = progress_var
-        self.progress_label = progress_label
         self._last_update_time = 0
         self._update_interval = 0.1  # 更新UI的间隔时间（秒）
 
     def update(self, n=1):
         try:
+            # 调用原始tqdm的update方法
             displayed = super().update(n)
+            
             # 限制更新频率，避免UI卡顿
             current_time = time.time()
             if current_time - self._last_update_time > self._update_interval:
-<<<<<<< HEAD
                 self._last_update_time = current_time
-                # 使用after方法在主线程中更新UI
-                if self.progress_var and hasattr(self.progress_var, 'set'):
+                
+                # 仅在全局进度变量可用时更新UI
+                global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
+                if GLOBAL_PROGRESS_VAR and hasattr(GLOBAL_PROGRESS_VAR, 'set'):
                     try:
-                        # 计算百分比
-=======
-                try:
-                    if self.progress_var and hasattr(self.progress_var, 'set'):
-                        # 在主线程中更新UI
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
-                        if self.total and self.total > 0:
-                            percentage = min(100, max(0, int(self.n / self.total * 100)))
-                        else:
-                            percentage = 0
-<<<<<<< HEAD
-                        
-                        # 在主线程中更新进度条
-                        self._update_ui(percentage)
+                        # 安全地计算百分比并在主线程中更新UI
+                        self._update_ui_safely()
                     except Exception as e:
-                        print(f"准备进度条更新时出错: {str(e)}", file=sys.__stdout__)
-=======
-                        self.progress_var.set(percentage)
-                        
-                        if self.progress_label and hasattr(self.progress_label, 'configure'):
-                            text = f"下载进度: {percentage}% ({self.n}/{self.total or '?'})"
-                            self.progress_label.configure(text=text)
-                except Exception as e:
-                    print(f"更新进度条时出错: {str(e)}", file=sys.__stdout__)
-                self._last_update_time = current_time
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
+                        print(f"进度条更新出错: {str(e)}", file=sys.__stdout__)
+            
             return displayed
         except Exception as e:
-            print(f"tqdm更新时出错: {str(e)}", file=sys.__stdout__)
+            print(f"tqdm.update出错: {str(e)}", file=sys.__stdout__)
             return False
-<<<<<<< HEAD
     
-    def _update_ui(self, percentage):
-        """在主线程中更新UI"""
-        # 获取根窗口
+    def _update_ui_safely(self):
+        """安全地计算百分比并准备更新UI"""
+        try:
+            # 计算百分比
+            if self.total and self.total > 0:
+                percentage = min(100, max(0, int(self.n / self.total * 100)))
+            else:
+                percentage = 0
+            
+            # 使用调度器在主线程中更新UI
+            self._schedule_ui_update(percentage)
+        except Exception as e:
+            print(f"准备UI更新时出错: {str(e)}", file=sys.__stdout__)
+    
+    def _schedule_ui_update(self, percentage):
+        """使用tkinter调度器在主线程中更新UI"""
         import tkinter as tk
-        root = None
-        if self.progress_var and hasattr(self.progress_var, '_root'):
-            root = self.progress_var._root()
-        elif self.progress_label and hasattr(self.progress_label, 'winfo_toplevel'):
-            root = self.progress_label.winfo_toplevel()
+        global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
         
+        # 找到根窗口
+        root = None
+        if GLOBAL_PROGRESS_VAR and hasattr(GLOBAL_PROGRESS_VAR, '_root'):
+            try:
+                root = GLOBAL_PROGRESS_VAR._root()
+            except:
+                pass
+        elif GLOBAL_PROGRESS_LABEL and hasattr(GLOBAL_PROGRESS_LABEL, 'winfo_toplevel'):
+            try:
+                root = GLOBAL_PROGRESS_LABEL.winfo_toplevel()
+            except:
+                pass
+        
+        # 如果找到了根窗口，在主线程中调度更新
         if root and isinstance(root, tk.Tk):
-            # 使用after方法在主线程中执行
-            root.after(0, self._do_update, percentage)
+            try:
+                root.after(0, self._do_update, percentage)
+            except Exception as e:
+                print(f"调度UI更新时出错: {str(e)}", file=sys.__stdout__)
     
     def _do_update(self, percentage):
-        """实际执行UI更新的方法"""
+        """在主线程中执行UI更新"""
         try:
-            # 更新进度条
-            if self.progress_var and hasattr(self.progress_var, 'set'):
-                self.progress_var.set(percentage)
+            global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
             
-            # 更新标签
-            if self.progress_label and hasattr(self.progress_label, 'configure'):
+            # 更新进度条
+            if GLOBAL_PROGRESS_VAR and hasattr(GLOBAL_PROGRESS_VAR, 'set'):
+                GLOBAL_PROGRESS_VAR.set(percentage)
+            
+            # 更新标签文本
+            if GLOBAL_PROGRESS_LABEL and hasattr(GLOBAL_PROGRESS_LABEL, 'configure'):
                 text = f"下载进度: {percentage}% ({self.n}/{self.total or '?'})"
-                self.progress_label.configure(text=text)
+                GLOBAL_PROGRESS_LABEL.configure(text=text)
         except Exception as e:
-            print(f"更新进度条UI时出错: {str(e)}", file=sys.__stdout__)
+            print(f"更新UI时出错: {str(e)}", file=sys.__stdout__)
     
-    def refresh(self):
-        """强制刷新进度条"""
-        if self.total and self.total > 0:
-            percentage = min(100, max(0, int(self.n / self.total * 100)))
-        else:
-            percentage = 0
-        self._update_ui(percentage)
-=======
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
+    def refresh(self, *args, **kwargs):
+        """强制刷新进度条，接受任意参数以兼容tqdm内部调用"""
+        try:
+            self._update_ui_safely()
+        except Exception as e:
+            print(f"刷新进度条时出错: {str(e)}", file=sys.__stdout__)
+
+# 使用自定义进度条替换原始tqdm
+def set_custom_tqdm():
+    """设置全局tqdm为自定义版本"""
+    # 此处不直接替换全局tqdm变量，而是在GUI类内部使用全局变量
+    # 让Run函数使用原始tqdm实现，避免类型错误
+    pass
 
 class NovelDownloaderGUI(tk.Tk):
     def __init__(self):
@@ -153,11 +596,7 @@ class NovelDownloaderGUI(tk.Tk):
             self.protocol("WM_DELETE_WINDOW", self.on_closing)
             
             # 添加版本信息
-<<<<<<< HEAD
-            self.version = "1.1.3"
-=======
-            self.version = "1.1.2"
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
+            self.version = "1.2.1"
             
             # 状态变量
             self.is_downloading = False
@@ -615,27 +1054,20 @@ class NovelDownloaderGUI(tk.Tk):
         self.stdout_redirect = RedirectText(self.log_text)
         sys.stdout = self.stdout_redirect
         
-        # 替换tqdm类，使其更新GUI进度条
-<<<<<<< HEAD
-        # 直接修改2.py中的全局tqdm变量，而不是替换导入
-=======
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
-        novel_downloader.tqdm = lambda *args, **kwargs: CustomTqdm(
-            *args, **kwargs, progress_var=self.progress_var, progress_label=self.progress_label
-        )
+        # 设置全局进度变量
+        global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
+        GLOBAL_PROGRESS_VAR = self.progress_var
+        GLOBAL_PROGRESS_LABEL = self.progress_label
+        
+        # 使用全局tqdm替换
+        set_custom_tqdm()
         
         # 设置线程数和输出格式
         threads = int(self.threads_var.get())
         output_format = self.format_var.get()
-<<<<<<< HEAD
         
-        # 将设置直接应用到2.py的CONFIG中
-        if hasattr(novel_downloader, 'CONFIG'):
-            novel_downloader.CONFIG["max_workers"] = threads
-=======
-        novel_downloader.MAX_WORKERS = threads
-        novel_downloader.OUTPUT_FORMAT = output_format
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
+        # 将设置直接应用到CONFIG中
+        CONFIG["max_workers"] = threads
         
         # 在新线程中运行下载
         self.download_thread = threading.Thread(target=self.run_download, args=(book_id, save_path, output_format))
@@ -646,11 +1078,7 @@ class NovelDownloaderGUI(tk.Tk):
         try:
             print(f"开始下载小说 ID: {book_id}")
             print(f"保存路径: {save_path}")
-<<<<<<< HEAD
-            print(f"使用线程数: {novel_downloader.CONFIG['max_workers']}")
-=======
-            print(f"使用线程数: {novel_downloader.MAX_WORKERS}")
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
+            print(f"使用线程数: {CONFIG['max_workers']}")
             print(f"输出格式: {output_format}")
             
             # 确保保存路径存在
@@ -661,17 +1089,21 @@ class NovelDownloaderGUI(tk.Tk):
                 raise Exception(f"创建保存目录失败: {str(e)}")
             
             try:
-<<<<<<< HEAD
-                # 确保设置了全局配置
-                if hasattr(novel_downloader, 'CONFIG'):
-                    novel_downloader.CONFIG["max_workers"] = int(self.threads_var.get())
+                # 调整请求超时时间，避免连接问题
+                CONFIG["request_timeout"] = 30  # 延长超时时间到30秒
                 
-                # 调用2.py的Run函数（只传递book_id和save_path两个参数）
-                novel_downloader.Run(book_id, save_path)
-=======
-                novel_downloader.Run(book_id, save_path, output_format)
->>>>>>> 1ecb4f51e6909ebc6583015ecc10efdfed97a261
-                self.after(100, self.download_complete, "下载完成！")
+                # 更新全局配置中的线程数
+                CONFIG["max_workers"] = int(self.threads_var.get())
+                
+                # 直接调用Run函数
+                result = Run(book_id, save_path)
+                
+                if result:
+                    message = f"下载完成！共下载了 {result.get('downloaded_chapters', 0)} 章，保存到：{result.get('file_path', save_path)}"
+                else:
+                    message = "下载完成，但未返回详细信息"
+                
+                self.after(100, self.download_complete, message)
             except AttributeError as e:
                 if "'NoneType' object has no attribute" in str(e):
                     error_msg = f"下载失败: 可能是某个章节内容获取失败或文件写入失败。详细错误: {str(e)}"
@@ -689,6 +1121,11 @@ class NovelDownloaderGUI(tk.Tk):
             self.is_downloading = False
             self.download_button.config(text="开始下载", state=tk.NORMAL)
             self.progress_label.config(text=message)
+            
+            # 清理全局进度变量
+            global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
+            GLOBAL_PROGRESS_VAR = None
+            GLOBAL_PROGRESS_LABEL = None
             
             # 尝试恢复标准输出
             try:
@@ -783,6 +1220,11 @@ class NovelDownloaderGUI(tk.Tk):
                         # 恢复标准输出
                         if sys.stdout != sys.__stdout__:
                             sys.stdout = sys.__stdout__
+                            
+                        # 清理全局进度变量
+                        global GLOBAL_PROGRESS_VAR, GLOBAL_PROGRESS_LABEL
+                        GLOBAL_PROGRESS_VAR = None
+                        GLOBAL_PROGRESS_LABEL = None
                     except Exception as e:
                         print(f"关闭时恢复标准输出错误: {str(e)}", file=sys.__stdout__)
                     self.destroy()
